@@ -4,9 +4,10 @@ import (
 	"crypto/elliptic"
 	"crypto/sha256"
 	"errors"
+	"math/big"
+
 	"github.com/mrtnetwork/bitcoin/digest"
 	"github.com/mrtnetwork/bitcoin/formating"
-	"math/big"
 )
 
 // SignMessage signs the given message using the provided private key
@@ -24,7 +25,9 @@ func SingMessage(message []byte, privateKey []byte) []byte {
 
 		for {
 			k = kCalculator.NextK()
-			x, _ := ScalarBaseMultBigInt(curve, *k) // Assuming you have an appropriate function for scalar multiplication.
+			x, _ := ScalarBaseMultBigInt(
+				curve, *k,
+			) // Assuming you have an appropriate function for scalar multiplication.
 			r = new(big.Int).Mod(x, n)
 
 			if r.Cmp(big.NewInt(0)) != 0 {
@@ -73,7 +76,9 @@ func SingDer(message []byte, privateKey []byte, entryPointes []byte) []byte {
 
 		for {
 			k = kCalculator.NextK()
-			x, _ := ScalarBaseMultBigInt(curve, *k) // Assuming you have an appropriate function for scalar multiplication.
+			x, _ := ScalarBaseMultBigInt(
+				curve, *k,
+			) // Assuming you have an appropriate function for scalar multiplication.
 			r = new(big.Int).Mod(x, n)
 
 			if r.Cmp(big.NewInt(0)) != 0 {
@@ -86,11 +91,20 @@ func SingDer(message []byte, privateKey []byte, entryPointes []byte) []byte {
 		edr := new(big.Int).Add(e, dr)
 		s = new(big.Int).Mod(new(big.Int).Mul(kinv, edr), n)
 
+		if s.Cmp(new(big.Int).Div(n, big.NewInt(2))) > 0 {
+			s = new(big.Int).Sub(n, s)
+		}
+
 		if s.Cmp(big.NewInt(0)) != 0 {
 			break
 		}
 	}
-	return ListBigIntToDER([]*big.Int{r, s})
+	return ListBigIntToDER(
+		[]*big.Int{
+			r,
+			s,
+		},
+	)
 
 }
 
@@ -118,21 +132,17 @@ func SingInput(privateKey []byte, message []byte, sigHash int) string {
 	R := signature[4 : 4+lengthR]
 	lengthS := int(signature[5+lengthR])
 	S := signature[5+lengthR+1:]
-	sAsBigint := formating.BytesToInt(S)
 
-	var newS []byte
-
-	if lengthS == 33 {
-		newSAsBigint := new(big.Int).Sub(P256k1().Params().N, sAsBigint)
-		newS = encodeBigInt(newSAsBigint)
-		lengthS -= 1
-		lengthTotal -= 1
-	} else {
-		newS = S
-	}
-	newSignature := append([]byte{derPrefix, byte(lengthTotal), byte(derTypeInt), byte(lengthR)}, R...)
+	newSignature := append(
+		[]byte{
+			derPrefix,
+			byte(lengthTotal),
+			byte(derTypeInt),
+			byte(lengthR),
+		}, R...,
+	)
 	newSignature = append(newSignature, byte(derTypeInt), byte(lengthS))
-	newSignature = append(newSignature, newS...)
+	newSignature = append(newSignature, S...)
 	newSignature = append(newSignature, byte(sigHash))
 	return formating.BytesToHex(newSignature)
 }
